@@ -307,33 +307,44 @@ def prepare_nomic_atlas_topics(data_frame: pd.DataFrame, field: str = "body", ap
         
         # Create Nomic Atlas project and map
         try:
-            # For Nomic 3.4.1, we need to use the correct API
-            logger.info(f"Creating Nomic Atlas project with {len(documents)} documents")
+            # For Nomic 3.4.1, use AtlasDataset to load existing or create new
+            logger.info(f"Preparing Nomic Atlas project with {len(documents)} documents")
 
-            # Generate a dataset name if not provided
+            # Dataset name should be provided by caller (based on repo name)
             if not dataset_name:
-                dataset_name = f'issues_analysis_{int(time.time())}'
+                raise ValueError("dataset_name is required for Nomic Atlas topic generation")
 
             logger.info(f"Using dataset name: {dataset_name}")
 
-            # Create a project (this will load existing dataset if it exists with the same name)
+            # Try to load existing dataset or create new
             try:
-                project = atlas.map_data(
-                    data=documents,
-                    id_field='id',
-                    indexed_field=field,
-                    description=f'Repository Issues Analysis',
-                    identifier=dataset_name,
-                )
+                from nomic import AtlasDataset
+
+                # Try to load existing dataset first
+                try:
+                    dataset = AtlasDataset(dataset_name)
+                    logger.info(f"✅ Loading existing dataset: {dataset_name}")
+                    atlas_map = dataset.maps[0]
+                except Exception as dataset_err:
+                    # Dataset doesn't exist, create it using map_data
+                    logger.info(f"📝 Creating new dataset: {dataset_name}")
+                    logger.debug(f"Dataset load error (expected for new datasets): {dataset_err}")
+
+                    project = atlas.map_data(
+                        data=documents,
+                        id_field='id',
+                        indexed_field=field,
+                        description='Repository Issues Analysis',
+                        identifier=dataset_name,
+                    )
+                    atlas_map = project.maps[0]
+
             except json.JSONDecodeError as json_err:
                 logger.error(f"JSON decode error when creating Nomic Atlas project: {json_err}")
                 return {"error": f"Failed to parse Nomic API response. This may be a temporary API issue. Please try again."}
             except Exception as api_err:
                 logger.error(f"Error calling Nomic Atlas API: {api_err}")
                 return {"error": f"Nomic API error: {str(api_err)}"}
-            
-            # Get the map
-            atlas_map = project.maps[0]
             
             # Wait for topics to be generated
             # This can take some time for larger datasets

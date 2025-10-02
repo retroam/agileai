@@ -1111,85 +1111,79 @@ export function AnalysisPage() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* Topic Hierarchy */}
-                    {nomicTopicData?.topic_hierarchy && Object.keys(nomicTopicData.topic_hierarchy).length > 0 ? (
-                      <div>
-                        <h4 className="text-md font-medium mb-2">Topic Hierarchy</h4>
-                        <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-64">
-                          {JSON.stringify(nomicTopicData.topic_hierarchy, null, 2)}
-                        </pre>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 p-4 rounded-md">
-                        <p className="text-gray-500">No topic hierarchy data available.</p>
-                      </div>
-                    )}
-                    
-                    {/* Topic Counts */}
-                    {nomicTopicData?.topic_counts && Object.keys(nomicTopicData.topic_counts).length > 0 ? (
-                      <div>
-                        <h4 className="text-md font-medium mb-2">Topic Counts</h4>
-                        {Object.entries(nomicTopicData.topic_counts).map(([depth, counts]) => (
-                          <div key={depth} className="mb-4">
-                            <h5 className="text-sm font-medium mb-1">{depth}</h5>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                              {Object.entries(counts).map(([topic, count]) => (
-                                <div key={topic} className="bg-gray-100 p-2 rounded-md">
-                                  <span className="font-medium">{topic}:</span> {count}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 p-4 rounded-md">
-                        <p className="text-gray-500">No topic count data available.</p>
-                      </div>
-                    )}
-                    
-                    {/* Topic Groups */}
-                    {nomicTopicData?.topic_groups && 
-                     Object.keys(nomicTopicData.topic_groups).length > 0 && 
-                     nomicTopicData.topic_groups['depth_1'] && 
-                     nomicTopicData.topic_groups['depth_1'].length > 0 ? (
-                      <div>
-                        <h4 className="text-md font-medium mb-2">Topic Groups (Depth 1)</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {nomicTopicData.topic_groups['depth_1'].map((group, index) => (
-                            <div key={index} className="bg-gray-100 p-4 rounded-md">
-                              <h5 className="text-sm font-medium mb-2">Group {index + 1}</h5>
-                              <pre className="text-xs overflow-auto max-h-40">
-                                {JSON.stringify(group, null, 2)}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 p-4 rounded-md">
-                        <p className="text-gray-500">No topic group data available.</p>
-                      </div>
-                    )}
-                    
-                    {/* Topics List */}
+                    {/* Topic Cards with Labels */}
                     {nomicTopicData?.topics && nomicTopicData.topics.length > 0 ? (
                       <div>
-                        <h4 className="text-md font-medium mb-2">Topics</h4>
-                        <div className="bg-gray-100 p-4 rounded-md overflow-auto max-h-64">
-                          <pre>{JSON.stringify(nomicTopicData.topics.slice(0, 10), null, 2)}</pre>
-                          {nomicTopicData.topics.length > 0 && nomicTopicData.topics.length > 10 && (
-                            <p className="text-gray-500 mt-2">
-                              Showing 10 of {nomicTopicData.topics.length} topics...
-                            </p>
-                          )}
+                        <h4 className="text-md font-medium mb-4">Discovered Topics</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {nomicTopicData.topics
+                            .filter((topic: any) => topic.topic_depth_1) // Only show topics with depth 1 labels
+                            .reduce((acc: any[], topic: any) => {
+                              // Group by topic_depth_1 to show unique topics
+                              const existingTopic = acc.find((t: any) => t.topic_depth_1 === topic.topic_depth_1);
+                              if (!existingTopic) {
+                                acc.push(topic);
+                              }
+                              return acc;
+                            }, [])
+                            .slice(0, 12) // Show top 12 unique topics
+                            .map((topic: any, index: number) => (
+                              <div
+                                key={index}
+                                className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200 hover:shadow-md transition-shadow"
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <h5 className="font-semibold text-blue-900 flex-1">
+                                    {topic.topic_depth_1 || `Topic ${index + 1}`}
+                                  </h5>
+                                  <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
+                                    {nomicTopicData.topic_counts?.topic_depth_1?.[topic.topic_depth_1] || 0}
+                                  </span>
+                                </div>
+                                {topic.topic_depth_2 && (
+                                  <p className="text-sm text-blue-700 mb-2">
+                                    → {topic.topic_depth_2}
+                                  </p>
+                                )}
+                                {topic.topic_depth_3 && (
+                                  <p className="text-xs text-blue-600 italic">
+                                    → {topic.topic_depth_3}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
                         </div>
+                        <p className="text-sm text-gray-500 mt-4">
+                          Showing {Math.min(12, nomicTopicData.topics.filter((t: any) => t.topic_depth_1).reduce((acc: any[], topic: any) => {
+                            const exists = acc.find((t: any) => t.topic_depth_1 === topic.topic_depth_1);
+                            if (!exists) acc.push(topic);
+                            return acc;
+                          }, []).length)} unique topics
+                        </p>
                       </div>
                     ) : (
                       <div className="bg-gray-50 p-4 rounded-md">
                         <p className="text-gray-500">No topic data available.</p>
                       </div>
                     )}
+
+                    {/* Topic Distribution */}
+                    {nomicTopicData?.topic_counts?.topic_depth_1 && Object.keys(nomicTopicData.topic_counts.topic_depth_1).length > 0 ? (
+                      <div>
+                        <h4 className="text-md font-medium mb-4">Topic Distribution</h4>
+                        <div className="bg-white p-4 rounded-lg border">
+                          <BarChart
+                            data={Object.entries(nomicTopicData.topic_counts.topic_depth_1)
+                              .sort(([, a], [, b]) => (b as number) - (a as number))
+                              .slice(0, 10)
+                              .map(([name, value]) => ({ name, value }))}
+                            xKey="name"
+                            yKey="value"
+                            title="Number of Issues per Topic"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )
               ) : (

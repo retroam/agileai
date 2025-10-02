@@ -1105,6 +1105,11 @@ async def get_nomic_atlas_topics(req: NomicApiKeyRequest):
     # Convert to DataFrame
     issues_df = pd.DataFrame(issues_data)
 
+    # Generate a dataset name from repo if not provided
+    if not dataset_name:
+        # Convert repo name to valid dataset name (replace / with -)
+        dataset_name = repo.replace('/', '-') + '-issues'
+
     # Generate Nomic Atlas topic data
     topic_data = prepare_nomic_atlas_topics(issues_df, field, nomic_api_key, dataset_name)
 
@@ -1364,6 +1369,11 @@ async def get_nomic_atlas_topics_get(
 
     # Convert to DataFrame
     issues_df = pd.DataFrame(issues_data)
+
+    # Generate a dataset name from repo if not provided
+    if not dataset_name:
+        # Convert repo name to valid dataset name (replace / with -)
+        dataset_name = repo.replace('/', '-') + '-issues'
 
     # Generate Nomic Atlas topic data
     topic_data = prepare_nomic_atlas_topics(issues_df, field, nomic_api_key, dataset_name)
