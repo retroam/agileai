@@ -848,7 +848,7 @@ export function AnalysisPage() {
                           .filter(issue => issue.time_to_close !== null)
                           .slice(-20)
                           .map(issue => ({
-                            title: issue.title.length > 40 ? issue.title.substring(0, 40) + '...' : issue.title,
+                            title: issue.title.length > 30 ? issue.title.substring(0, 30) + '...' : issue.title,
                             start: 0,
                             duration: issue.time_to_close!,
                             state: issue.state
@@ -869,7 +869,7 @@ export function AnalysisPage() {
                   <Card className="p-6 md:col-span-2">
                     <h3 className="text-lg font-semibold mb-4">Contributor Collaboration Matrix</h3>
                     <p className="text-xs text-muted-foreground mb-2">Collaboration based on shared labels</p>
-                    <div className="h-[560px]">
+                    <div className="h-[560px] max-w-[600px] mx-auto">
                       {(() => {
                         // Build collaboration matrix: users who use similar labels (work on similar topics)
                         const contributorCounts = new Map<string, number>();
@@ -976,13 +976,16 @@ export function AnalysisPage() {
                           nodes.push({ name: state });
                         });
 
-                        // Build links
-                        const links: { source: number; target: number; value: number }[] = [];
+                        // Build links with percentages
+                        const links: { source: number; target: number; value: number; percentage: number }[] = [];
                         topLabels.forEach(([label, stateMap]) => {
                           const labelIdx = nodeMap.get(label)!;
+                          // Calculate total for this label
+                          const labelTotal = Array.from(stateMap.values()).reduce((sum, val) => sum + val, 0);
                           stateMap.forEach((count, state) => {
                             const stateIdx = nodeMap.get(state)!;
-                            links.push({ source: labelIdx, target: stateIdx, value: count });
+                            const percentage = labelTotal > 0 ? (count / labelTotal) * 100 : 0;
+                            links.push({ source: labelIdx, target: stateIdx, value: count, percentage });
                           });
                         });
 
@@ -999,18 +1002,49 @@ export function AnalysisPage() {
 
                   {/* Violin Plot */}
                   <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Time to Close Distribution</h3>
+                    <h3 className="text-lg font-semibold mb-4">Average Time to Close by Label</h3>
                     <div className="h-[400px]">
                       {(() => {
-                        const closedIssues = data.issues
-                          .filter(i => i.state === 'closed' && i.time_to_close !== null && i.time_to_close > 0)
-                          .map(i => i.time_to_close!);
+                        // Group closed issues by label and calculate average time to close
+                        const labelTimeMap = new Map<string, { total: number; count: number }>();
 
-                        return closedIssues.length > 0 ? (
-                          <ViolinPlot data={[{ category: 'Closed Issues', values: closedIssues }]} />
+                        data.issues
+                          .filter(i => i.state === 'closed' && i.time_to_close !== null && i.time_to_close > 0)
+                          .forEach(issue => {
+                            if (issue.labels && issue.labels.length > 0) {
+                              issue.labels.forEach(label => {
+                                if (!labelTimeMap.has(label)) {
+                                  labelTimeMap.set(label, { total: 0, count: 0 });
+                                }
+                                const stats = labelTimeMap.get(label)!;
+                                stats.total += issue.time_to_close!;
+                                stats.count += 1;
+                              });
+                            }
+                          });
+
+                        // Calculate averages and sort by average time
+                        const labelData = Array.from(labelTimeMap.entries())
+                          .map(([label, stats]) => ({
+                            label: label.length > 20 ? label.substring(0, 20) + '...' : label,
+                            avgTimeToClose: Number((stats.total / stats.count).toFixed(1))
+                          }))
+                          .sort((a, b) => b.avgTimeToClose - a.avgTimeToClose)
+                          .slice(0, 10); // Top 10 labels
+
+                        return labelData.length > 0 ? (
+                          <BarChart
+                            data={labelData}
+                            xKey="label"
+                            yKey="avgTimeToClose"
+                            title="Avg Days to Close"
+                            layout="horizontal"
+                            color="hsl(var(--chart-2))"
+                            xAxisLabel="Average Days to Close"
+                          />
                         ) : (
                           <div className="h-full flex items-center justify-center text-muted-foreground">
-                            No time-to-close data available for closed issues
+                            No labeled closed issues with time-to-close data
                           </div>
                         );
                       })()}

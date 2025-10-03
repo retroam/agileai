@@ -157,10 +157,10 @@ def prepare_repository_insights(issues_df: pd.DataFrame) -> Dict[str, Any]:
             closed_issues = issues_df[issues_df['time_to_close'].notna()]
             if not closed_issues.empty:
                 time_to_close_stats = {
-                    'mean': float(closed_issues['time_to_close'].mean() / 24),  # Convert to days and to Python float
-                    'median': float(closed_issues['time_to_close'].median() / 24),
-                    'min': float(closed_issues['time_to_close'].min() / 24),
-                    'max': float(closed_issues['time_to_close'].max() / 24)
+                    'mean': float(closed_issues['time_to_close'].mean()),  # Already in days, convert to Python float
+                    'median': float(closed_issues['time_to_close'].median()),
+                    'min': float(closed_issues['time_to_close'].min()),
+                    'max': float(closed_issues['time_to_close'].max())
                 }
         
         # Top contributors

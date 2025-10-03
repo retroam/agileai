@@ -160,11 +160,11 @@ def _parse_gh_date(date_str: Optional[str]) -> Optional[datetime.datetime]:
         return None
 
 def _calculate_time_diff(start: Optional[datetime.datetime], end: Optional[datetime.datetime]) -> Optional[float]:
-    """Calculate time difference in hours between two datetimes."""
+    """Calculate time difference in days between two datetimes."""
     if not start or not end:
         return None
     try:
-        return (end - start).total_seconds() / 3600
+        return (end - start).total_seconds() / 86400
     except TypeError as e:
         logger.error(f"Invalid date comparison: {e}")
         return None

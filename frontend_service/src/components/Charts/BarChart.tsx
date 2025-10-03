@@ -33,6 +33,8 @@ interface BarChartOldProps {
   title?: string;
   color?: string;
   layout?: "vertical" | "horizontal";
+  xAxisLabel?: string;
+  yAxisLabel?: string;
 }
 
 // Combined type
@@ -79,7 +81,7 @@ export function BarChart(props: BarChartProps) {
   }
   
   // If using the old API
-  const { data, xKey, yKey, title, color = "#3b82f6", layout = "vertical" } = props;
+  const { data, xKey, yKey, title, color = "#3b82f6", layout = "vertical", xAxisLabel, yAxisLabel } = props;
   
   if (!data || data.length === 0) {
     return (
@@ -110,19 +112,24 @@ export function BarChart(props: BarChartProps) {
           {isHorizontal ? (
             // Horizontal layout (vertical bars)
             <>
-              <YAxis 
-                dataKey={xKey} 
-                type="category" 
+              <YAxis
+                dataKey={xKey}
+                type="category"
                 tick={{ fontSize: 12 }}
                 width={80}
+                label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft' } : undefined}
               />
-              <XAxis type="number" tick={{ fontSize: 12 }} />
+              <XAxis
+                type="number"
+                tick={{ fontSize: 12 }}
+                label={xAxisLabel ? { value: xAxisLabel, position: 'insideBottom', offset: -5 } : undefined}
+              />
             </>
           ) : (
             // Vertical layout (horizontal bars)
             <>
-              <XAxis 
-                dataKey={xKey} 
+              <XAxis
+                dataKey={xKey}
                 tick={{ fontSize: 12 }}
                 tickFormatter={(value: any) => {
                   // Truncate long labels
@@ -131,8 +138,12 @@ export function BarChart(props: BarChartProps) {
                   }
                   return value;
                 }}
+                label={xAxisLabel ? { value: xAxisLabel, position: 'insideBottom', offset: -10 } : undefined}
               />
-              <YAxis tick={{ fontSize: 12 }} />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft' } : undefined}
+              />
             </>
           )}
           

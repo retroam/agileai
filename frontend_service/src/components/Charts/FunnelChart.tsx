@@ -47,7 +47,9 @@ export function FunnelChart({ data, height = 350 }: FunnelChartProps) {
   };
 
   const renderCustomLabel = (props: any) => {
-    const { x, y, width, height, value, percentage } = props;
+    const { x, y, width, height, value } = props;
+    const dataPoint = dataWithPercentages.find(d => d.value === value);
+    const percentage = dataPoint?.percentage || 0;
     return (
       <text
         x={x + width / 2}

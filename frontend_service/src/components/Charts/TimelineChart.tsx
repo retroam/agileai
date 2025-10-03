@@ -50,7 +50,7 @@ export function TimelineChart({ data, height = 400 }: TimelineChartProps) {
       <BarChart
         data={sortedData}
         layout="vertical"
-        margin={{ top: 20, right: 30, left: 150, bottom: 30 }}
+        margin={{ top: 20, right: 30, left: 20, bottom: 10 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis
@@ -59,7 +59,7 @@ export function TimelineChart({ data, height = 400 }: TimelineChartProps) {
           label={{
             value: 'Days to Close',
             position: 'insideBottom',
-            offset: -10,
+            offset: -5,
             style: { fontSize: '12px' }
           }}
           tick={{ fontSize: 11 }}
@@ -67,7 +67,7 @@ export function TimelineChart({ data, height = 400 }: TimelineChartProps) {
         <YAxis
           type="category"
           dataKey="title"
-          width={140}
+          width={180}
           stroke="hsl(var(--muted-foreground))"
           tick={{ fontSize: 10 }}
         />

@@ -9,6 +9,7 @@ interface SankeyLink {
   source: number;
   target: number;
   value: number;
+  percentage?: number;
 }
 
 interface SankeyData {
@@ -41,7 +42,7 @@ export function SankeyChart({ data, height = 400 }: SankeyChartProps) {
                 {data.source.name} → {data.target.name}
               </p>
               <p className="text-xs text-muted-foreground">
-                Issues: {data.value}
+                Issues: {data.value}{data.percentage !== undefined ? ` (${data.percentage.toFixed(1)}%)` : ''}
               </p>
             </>
           ) : (
