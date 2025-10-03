@@ -1003,18 +1003,14 @@ export function AnalysisPage() {
                     <div className="h-[400px]">
                       {(() => {
                         const closedIssues = data.issues
-                          .filter(i => i.state === 'closed' && i.time_to_close !== null)
+                          .filter(i => i.state === 'closed' && i.time_to_close !== null && i.time_to_close > 0)
                           .map(i => i.time_to_close!);
 
-                        const violinData = [
-                          { category: 'Closed', values: closedIssues }
-                        ].filter(d => d.values.length > 0);
-
-                        return violinData.length > 0 ? (
-                          <ViolinPlot data={violinData} />
+                        return closedIssues.length > 0 ? (
+                          <ViolinPlot data={[{ category: 'Closed Issues', values: closedIssues }]} />
                         ) : (
                           <div className="h-full flex items-center justify-center text-muted-foreground">
-                            No time-to-close data available
+                            No time-to-close data available for closed issues
                           </div>
                         );
                       })()}

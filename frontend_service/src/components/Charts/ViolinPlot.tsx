@@ -13,9 +13,17 @@ interface ViolinPlotProps {
 
 // Calculate kernel density estimation for smooth distribution
 function kernelDensityEstimator(values: number[], bandwidth: number = 5) {
+  if (values.length === 0) return [];
+
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min;
+
+  // Handle case where all values are the same
+  if (range === 0) {
+    return [{ x: min, density: 1 }];
+  }
+
   const numPoints = 50;
   const step = range / numPoints;
 
@@ -56,6 +64,15 @@ export function ViolinPlot({ data, height = 400 }: ViolinPlotProps) {
     category: d.category,
     kde: kernelDensityEstimator(d.values.filter(v => v != null && !isNaN(v)))
   }));
+
+  // Check if any distribution has valid data
+  if (distributions.every(d => d.kde.length === 0)) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground">
+        No valid distribution data available
+      </div>
+    );
+  }
 
   // Find max density for scaling
   const maxDensity = Math.max(...distributions.flatMap(d => d.kde.map(p => p.density)));
