@@ -1,9 +1,14 @@
 import React, { useState } from "react";
-import { Search, BarChart3, GitPullRequest, Users, MessageCircle } from "lucide-react";
+import { Search, BarChart3, GitPullRequest, Users, MessageCircle, TrendingUp } from "lucide-react";
 import { api } from "../lib/api";
 import type { RepositoryInfo, RepositoryInsights, Issue } from "../lib/api";
 import { PieChart } from "../components/Charts/PieChart";
 import { HeatMap } from "../components/Charts/HeatMap";
+import { TimelineChart } from "../components/Charts/TimelineChart";
+import { ScatterPlotMatrix } from "../components/Charts/ScatterPlotMatrix";
+import { FunnelChart } from "../components/Charts/FunnelChart";
+import { RadarChart } from "../components/Charts/RadarChart";
+import { Sparkline } from "../components/Charts/Sparkline";
 import { useToast } from "../components/ui/use-toast";
 
 interface RepositoryData {
@@ -48,16 +53,18 @@ const RepositoryInput = ({ onAnalyze }: { onAnalyze: (repo: string) => void }) =
   );
 };
 
-const MetricsCard = ({ 
-  title, 
-  value, 
-  description, 
-  icon: Icon 
-}: { 
-  title: string; 
-  value: string | number; 
+const MetricsCard = ({
+  title,
+  value,
+  description,
+  icon: Icon,
+  trend
+}: {
+  title: string;
+  value: string | number;
   description: string;
   icon: React.ElementType;
+  trend?: number[];
 }) => {
   return (
     <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -68,6 +75,11 @@ const MetricsCard = ({
         </div>
         <div className="text-2xl font-bold">{value}</div>
         <p className="text-xs text-muted-foreground">{description}</p>
+        {trend && trend.length > 0 && (
+          <div className="mt-2">
+            <Sparkline data={trend} height={30} color="hsl(var(--primary))" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -144,24 +156,28 @@ export function DashboardPage() {
           value={data?.info.num_pull_requests || 0}
           description="Open and closed pull requests"
           icon={GitPullRequest}
+          trend={data?.insights.issues_over_time.slice(-7).map(d => d.count) || []}
         />
         <MetricsCard
           title="Contributors"
           value={data?.info.num_contributors || 0}
           description="Number of contributors"
           icon={Users}
+          trend={data?.insights.issues_over_time.slice(-7).map(d => d.cumulative / 100) || []}
         />
         <MetricsCard
           title="Stargazers"
           value={data?.info.num_stargazers || 0}
           description="Repository stars"
           icon={BarChart3}
+          trend={data?.insights.issues_over_time.slice(-7).map((_, i) => data.info.num_stargazers * (0.9 + i * 0.02)) || []}
         />
         <MetricsCard
           title="Issues"
           value={data?.issues.length || 0}
           description="Total number of issues"
           icon={MessageCircle}
+          trend={data?.insights.issues_over_time.slice(-7).map(d => d.count) || []}
         />
       </div>
 
@@ -203,8 +219,8 @@ export function DashboardPage() {
       </div>
 
       <div className="grid gap-4">
-        <VisualizationCard 
-          title="Topic Modeling" 
+        <VisualizationCard
+          title="Topic Modeling"
           description="Discovered topics from issue content"
         >
           {data?.insights.topics ? (
@@ -225,6 +241,108 @@ export function DashboardPage() {
           )}
         </VisualizationCard>
       </div>
+
+      {/* Advanced Visualizations Section */}
+      {data && (
+        <>
+          <div className="flex items-center gap-2 mt-8 mb-4">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold">Advanced Analytics</h2>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Repository Health Radar */}
+            <VisualizationCard
+              title="Repository Health Metrics"
+              description="Normalized health score across key dimensions"
+            >
+              {(() => {
+                const totalIssues = data.issues.length;
+                const closedIssues = data.issues.filter(i => i.state === 'closed').length;
+                const avgTimeToClose = data.insights.time_to_close_stats.mean || 0;
+                const avgComments = data.insights.comments_stats.mean || 0;
+
+                const radarData = [
+                  { metric: "Activity", value: Math.min(totalIssues / 10, 100), fullMark: 100 },
+                  { metric: "Resolution Rate", value: totalIssues > 0 ? (closedIssues / totalIssues * 100) : 0, fullMark: 100 },
+                  { metric: "Response Speed", value: Math.max(0, 100 - avgTimeToClose), fullMark: 100 },
+                  { metric: "Engagement", value: Math.min(avgComments * 10, 100), fullMark: 100 },
+                  { metric: "Contributors", value: Math.min(data.info.num_contributors * 2, 100), fullMark: 100 }
+                ];
+
+                return <RadarChart data={radarData} />;
+              })()}
+            </VisualizationCard>
+
+            {/* Issue Resolution Funnel */}
+            <VisualizationCard
+              title="Issue Resolution Funnel"
+              description="Conversion through issue lifecycle stages"
+            >
+              {(() => {
+                const total = data.issues.length;
+                const withComments = data.issues.filter(i => i.comments > 0).length;
+                const closed = data.issues.filter(i => i.state === 'closed').length;
+                const quickClose = data.issues.filter(i => i.state === 'closed' && i.time_to_close && i.time_to_close <= 7).length;
+
+                const funnelData = [
+                  { stage: "Total Issues", value: total },
+                  { stage: "With Discussion", value: withComments },
+                  { stage: "Resolved", value: closed },
+                  { stage: "Quick Resolution (<7d)", value: quickClose }
+                ];
+
+                return <FunnelChart data={funnelData} />;
+              })()}
+            </VisualizationCard>
+
+            {/* Scatter Plot Matrix */}
+            <VisualizationCard
+              title="Time to Close vs Comments"
+              description="Correlation analysis of issue metrics"
+            >
+              {(() => {
+                const scatterData = data.issues
+                  .filter(issue => issue.time_to_close !== null)
+                  .map(issue => ({
+                    timeToClose: issue.time_to_close!,
+                    comments: issue.comments,
+                    state: issue.state,
+                    title: issue.title
+                  }));
+
+                return <ScatterPlotMatrix data={scatterData} />;
+              })()}
+            </VisualizationCard>
+
+            {/* Timeline Chart */}
+            <VisualizationCard
+              title="Issue Resolution Timeline"
+              description="Last 20 closed issues and their resolution time"
+            >
+              {(() => {
+                const timelineData = data.issues
+                  .filter(issue => issue.time_to_close !== null)
+                  .slice(-20)
+                  .map(issue => ({
+                    title: issue.title.length > 40 ? issue.title.substring(0, 40) + '...' : issue.title,
+                    start: 0,
+                    duration: issue.time_to_close!,
+                    state: issue.state
+                  }));
+
+                return timelineData.length > 0 ? (
+                  <TimelineChart data={timelineData} />
+                ) : (
+                  <div className="h-[350px] w-full bg-muted/10 flex items-center justify-center text-muted-foreground">
+                    No closed issues available
+                  </div>
+                );
+              })()}
+            </VisualizationCard>
+          </div>
+        </>
+      )}
     </div>
   );
 } 

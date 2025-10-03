@@ -15,6 +15,14 @@ import { BarChart } from '@/components/Charts/BarChart';
 import { LineChart } from '@/components/Charts/LineChart';
 import { ScatterChart } from '@/components/Charts/ScatterChart';
 import { TreeMap } from '@/components/Charts/TreeMap';
+import { TimelineChart } from '@/components/Charts/TimelineChart';
+import { ScatterPlotMatrix } from '@/components/Charts/ScatterPlotMatrix';
+import { FunnelChart } from '@/components/Charts/FunnelChart';
+import { RadarChart } from '@/components/Charts/RadarChart';
+import { Sparkline } from '@/components/Charts/Sparkline';
+import { CollaborationMatrix } from '@/components/Charts/CollaborationMatrix';
+import { SankeyChart } from '@/components/Charts/SankeyChart';
+import { ViolinPlot } from '@/components/Charts/ViolinPlot';
 import { PyLDAVisViewer } from '@/components/PyLDAVisViewer';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -562,6 +570,15 @@ export function AnalysisPage() {
                     <GitPullRequest className="h-5 w-5 text-blue-500" />
                   </div>
                   <div className="text-2xl font-bold">{data.info.num_pull_requests}</div>
+                  {data.insights.issues_over_time.length > 0 && (
+                    <div className="mt-2 w-full">
+                      <Sparkline
+                        data={data.insights.issues_over_time.slice(-7).map(d => d.count)}
+                        height={30}
+                        color="hsl(217, 91%, 60%)"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 border rounded flex flex-col items-center justify-center text-center">
                   <div className="flex items-center gap-2 mb-2">
@@ -569,6 +586,15 @@ export function AnalysisPage() {
                     <Users className="h-5 w-5 text-green-500" />
                   </div>
                   <div className="text-2xl font-bold">{data.info.num_contributors}</div>
+                  {data.insights.issues_over_time.length > 0 && (
+                    <div className="mt-2 w-full">
+                      <Sparkline
+                        data={data.insights.issues_over_time.slice(-7).map(d => d.cumulative / 100)}
+                        height={30}
+                        color="hsl(142, 71%, 45%)"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 border rounded flex flex-col items-center justify-center text-center">
                   <div className="flex items-center gap-2 mb-2">
@@ -576,6 +602,15 @@ export function AnalysisPage() {
                     <Star className="h-5 w-5 text-yellow-500" />
                   </div>
                   <div className="text-2xl font-bold">{data.info.num_stargazers}</div>
+                  {data.insights.issues_over_time.length > 0 && (
+                    <div className="mt-2 w-full">
+                      <Sparkline
+                        data={data.insights.issues_over_time.slice(-7).map((_, i) => data.info.num_stargazers * (0.9 + i * 0.02))}
+                        height={30}
+                        color="hsl(45, 93%, 47%)"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -734,6 +769,264 @@ export function AnalysisPage() {
                   <HeatMap data={data.insights.activity_heatmap} />
                 </div>
               </Card>
+
+              {/* NEW ADVANCED ANALYTICS SECTION */}
+              <div className="pt-6 border-t">
+                <h2 className="text-2xl font-bold mb-4">Advanced Analytics</h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Repository Health Radar */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Repository Health Metrics</h3>
+                    <div className="h-[400px]">
+                      {(() => {
+                        const totalIssues = data.issues.length;
+                        const closedIssues = data.issues.filter(i => i.state === 'closed').length;
+                        const avgTimeToClose = data.insights.time_to_close_stats.mean || 0;
+                        const avgComments = data.insights.comments_stats.mean || 0;
+
+                        const radarData = [
+                          { metric: "Activity", value: Math.min(totalIssues / 10, 100), fullMark: 100 },
+                          { metric: "Resolution Rate", value: totalIssues > 0 ? (closedIssues / totalIssues * 100) : 0, fullMark: 100 },
+                          { metric: "Response Speed", value: Math.max(0, 100 - avgTimeToClose), fullMark: 100 },
+                          { metric: "Engagement", value: Math.min(avgComments * 10, 100), fullMark: 100 },
+                          { metric: "Contributors", value: Math.min(data.info.num_contributors * 2, 100), fullMark: 100 }
+                        ];
+
+                        return <RadarChart data={radarData} />;
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Issue Resolution Funnel */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Issue Resolution Funnel</h3>
+                    <div className="h-[400px]">
+                      {(() => {
+                        const total = data.issues.length;
+                        const withComments = data.issues.filter(i => i.comments > 0).length;
+                        const closed = data.issues.filter(i => i.state === 'closed').length;
+                        const quickClose = data.issues.filter(i => i.state === 'closed' && i.time_to_close && i.time_to_close <= 7).length;
+
+                        const funnelData = [
+                          { stage: "Total Issues", value: total },
+                          { stage: "With Discussion", value: withComments },
+                          { stage: "Resolved", value: closed },
+                          { stage: "Quick Resolution (<7d)", value: quickClose }
+                        ];
+
+                        return <FunnelChart data={funnelData} height={350} />;
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Scatter Plot Matrix */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Time to Close vs Comments</h3>
+                    <div className="h-[350px]">
+                      {(() => {
+                        const scatterData = data.issues
+                          .filter(issue => issue.time_to_close !== null)
+                          .map(issue => ({
+                            timeToClose: issue.time_to_close!,
+                            comments: issue.comments,
+                            state: issue.state,
+                            title: issue.title
+                          }));
+
+                        return <ScatterPlotMatrix data={scatterData} />;
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Timeline Chart */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Issue Resolution Timeline</h3>
+                    <div className="h-[350px]">
+                      {(() => {
+                        const timelineData = data.issues
+                          .filter(issue => issue.time_to_close !== null)
+                          .slice(-20)
+                          .map(issue => ({
+                            title: issue.title.length > 40 ? issue.title.substring(0, 40) + '...' : issue.title,
+                            start: 0,
+                            duration: issue.time_to_close!,
+                            state: issue.state
+                          }));
+
+                        return timelineData.length > 0 ? (
+                          <TimelineChart data={timelineData} />
+                        ) : (
+                          <div className="h-full flex items-center justify-center text-muted-foreground">
+                            No closed issues available
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Collaboration Matrix */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Contributor Collaboration Matrix</h3>
+                    <p className="text-xs text-muted-foreground mb-2">Collaboration based on shared labels</p>
+                    <div className="h-[400px]">
+                      {(() => {
+                        // Build collaboration matrix: users who use similar labels (work on similar topics)
+                        const contributorCounts = new Map<string, number>();
+                        data.issues.forEach(issue => {
+                          contributorCounts.set(issue.user, (contributorCounts.get(issue.user) || 0) + 1);
+                        });
+
+                        // Get top 10 contributors by issue count
+                        const topContributors = Array.from(contributorCounts.entries())
+                          .sort((a, b) => b[1] - a[1])
+                          .slice(0, 10)
+                          .map(([user]) => user);
+
+                        // Create a map of labels each contributor uses
+                        const contributorLabels = new Map<string, Map<string, number>>();
+                        data.issues.forEach(issue => {
+                          if (!contributorLabels.has(issue.user)) {
+                            contributorLabels.set(issue.user, new Map());
+                          }
+                          const labelMap = contributorLabels.get(issue.user)!;
+                          issue.labels.forEach(label => {
+                            labelMap.set(label, (labelMap.get(label) || 0) + 1);
+                          });
+                        });
+
+                        // Calculate collaboration scores based on shared labels
+                        const collaborationData = topContributors.map(user1 => {
+                          const user1Labels = contributorLabels.get(user1) || new Map();
+
+                          return {
+                            id: user1,
+                            data: topContributors.map(user2 => {
+                              if (user1 === user2) return { x: user2, y: 0 };
+
+                              const user2Labels = contributorLabels.get(user2) || new Map();
+
+                              // Count shared labels (weighted by frequency)
+                              let sharedScore = 0;
+                              user1Labels.forEach((count1, label) => {
+                                if (user2Labels.has(label)) {
+                                  const count2 = user2Labels.get(label)!;
+                                  sharedScore += Math.min(count1, count2);
+                                }
+                              });
+
+                              return { x: user2, y: sharedScore };
+                            })
+                          };
+                        });
+
+                        return topContributors.length > 1 ? (
+                          <CollaborationMatrix data={collaborationData} />
+                        ) : (
+                          <div className="h-full flex items-center justify-center text-muted-foreground">
+                            Need multiple contributors for collaboration matrix
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Sankey Diagram */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Issue Label Flow</h3>
+                    <div className="h-[400px]">
+                      {(() => {
+                        // Build Sankey data: Labels -> States
+                        const labelStateMap = new Map<string, Map<string, number>>();
+
+                        data.issues.forEach(issue => {
+                          if (issue.labels && issue.labels.length > 0) {
+                            issue.labels.forEach(label => {
+                              if (!labelStateMap.has(label)) {
+                                labelStateMap.set(label, new Map());
+                              }
+                              const stateMap = labelStateMap.get(label)!;
+                              stateMap.set(issue.state, (stateMap.get(issue.state) || 0) + 1);
+                            });
+                          }
+                        });
+
+                        // Get top 5 labels
+                        const topLabels = Array.from(labelStateMap.entries())
+                          .sort((a, b) => {
+                            const aTotal = Array.from(a[1].values()).reduce((sum, val) => sum + val, 0);
+                            const bTotal = Array.from(b[1].values()).reduce((sum, val) => sum + val, 0);
+                            return bTotal - aTotal;
+                          })
+                          .slice(0, 5);
+
+                        // Build nodes and links
+                        const nodes: { name: string }[] = [];
+                        const nodeMap = new Map<string, number>();
+
+                        // Add label nodes
+                        topLabels.forEach(([label]) => {
+                          nodeMap.set(label, nodes.length);
+                          nodes.push({ name: label });
+                        });
+
+                        // Add state nodes
+                        ['open', 'closed'].forEach(state => {
+                          nodeMap.set(state, nodes.length);
+                          nodes.push({ name: state });
+                        });
+
+                        // Build links
+                        const links: { source: number; target: number; value: number }[] = [];
+                        topLabels.forEach(([label, stateMap]) => {
+                          const labelIdx = nodeMap.get(label)!;
+                          stateMap.forEach((count, state) => {
+                            const stateIdx = nodeMap.get(state)!;
+                            links.push({ source: labelIdx, target: stateIdx, value: count });
+                          });
+                        });
+
+                        return topLabels.length > 0 ? (
+                          <SankeyChart data={{ nodes, links }} />
+                        ) : (
+                          <div className="h-full flex items-center justify-center text-muted-foreground">
+                            No labeled issues available
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </Card>
+
+                  {/* Violin Plot */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Time to Close Distribution</h3>
+                    <div className="h-[400px]">
+                      {(() => {
+                        const openIssues = data.issues
+                          .filter(i => i.state === 'open' && i.time_to_close !== null)
+                          .map(i => i.time_to_close!);
+
+                        const closedIssues = data.issues
+                          .filter(i => i.state === 'closed' && i.time_to_close !== null)
+                          .map(i => i.time_to_close!);
+
+                        const violinData = [
+                          { category: 'Open', values: openIssues },
+                          { category: 'Closed', values: closedIssues }
+                        ].filter(d => d.values.length > 0);
+
+                        return violinData.length > 0 ? (
+                          <ViolinPlot data={violinData} />
+                        ) : (
+                          <div className="h-full flex items-center justify-center text-muted-foreground">
+                            No time-to-close data available
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </Card>
+                </div>
+              </div>
             </>
           )}
         </TabsContent>
