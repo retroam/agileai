@@ -27,30 +27,30 @@ export function CollaborationMatrix({ data, height = 400 }: CollaborationMatrixP
     <div style={{ height }}>
       <ResponsiveHeatMap
         data={data}
-        margin={{ top: 60, right: 90, bottom: 60, left: 90 }}
+        margin={{ top: 120, right: 140, bottom: 110, left: 140 }}
         valueFormat=">-.0f"
         axisTop={{
           tickSize: 5,
-          tickPadding: 5,
+          tickPadding: 10,
           tickRotation: -45,
           legend: '',
-          legendOffset: 46
+          legendOffset: 60
         }}
         axisRight={{
           tickSize: 5,
-          tickPadding: 5,
+          tickPadding: 10,
           tickRotation: 0,
           legend: 'Contributors',
           legendPosition: 'middle',
-          legendOffset: 70
+          legendOffset: 100
         }}
         axisLeft={{
           tickSize: 5,
-          tickPadding: 5,
+          tickPadding: 10,
           tickRotation: 0,
           legend: 'Contributors',
           legendPosition: 'middle',
-          legendOffset: -72
+          legendOffset: -90
         }}
         colors={{
           type: 'sequential',
@@ -61,7 +61,7 @@ export function CollaborationMatrix({ data, height = 400 }: CollaborationMatrixP
           {
             anchor: 'bottom',
             translateX: 0,
-            translateY: 30,
+            translateY: 50,
             length: 400,
             thickness: 8,
             direction: 'row',

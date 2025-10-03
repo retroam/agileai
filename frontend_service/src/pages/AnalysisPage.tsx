@@ -778,7 +778,7 @@ export function AnalysisPage() {
                   {/* Repository Health Radar */}
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Repository Health Metrics</h3>
-                    <div className="h-[400px]">
+                    <div className="h-[520px]">
                       {(() => {
                         const totalIssues = data.issues.length;
                         const closedIssues = data.issues.filter(i => i.state === 'closed').length;
@@ -866,10 +866,10 @@ export function AnalysisPage() {
                   </Card>
 
                   {/* Collaboration Matrix */}
-                  <Card className="p-6">
+                  <Card className="p-6 md:col-span-2">
                     <h3 className="text-lg font-semibold mb-4">Contributor Collaboration Matrix</h3>
                     <p className="text-xs text-muted-foreground mb-2">Collaboration based on shared labels</p>
-                    <div className="h-[400px]">
+                    <div className="h-[560px]">
                       {(() => {
                         // Build collaboration matrix: users who use similar labels (work on similar topics)
                         const contributorCounts = new Map<string, number>();
@@ -921,7 +921,7 @@ export function AnalysisPage() {
                         });
 
                         return topContributors.length > 1 ? (
-                          <CollaborationMatrix data={collaborationData} />
+                          <CollaborationMatrix data={collaborationData} height={560} />
                         ) : (
                           <div className="h-full flex items-center justify-center text-muted-foreground">
                             Need multiple contributors for collaboration matrix
@@ -1002,16 +1002,11 @@ export function AnalysisPage() {
                     <h3 className="text-lg font-semibold mb-4">Time to Close Distribution</h3>
                     <div className="h-[400px]">
                       {(() => {
-                        const openIssues = data.issues
-                          .filter(i => i.state === 'open' && i.time_to_close !== null)
-                          .map(i => i.time_to_close!);
-
                         const closedIssues = data.issues
                           .filter(i => i.state === 'closed' && i.time_to_close !== null)
                           .map(i => i.time_to_close!);
 
                         const violinData = [
-                          { category: 'Open', values: openIssues },
                           { category: 'Closed', values: closedIssues }
                         ].filter(d => d.values.length > 0);
 
@@ -1490,4 +1485,4 @@ export function AnalysisPage() {
       </Tabs>
     </div>
   );
-} 
+}
