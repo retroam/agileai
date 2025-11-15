@@ -1,0 +1,36 @@
+[project]
+name = "agileai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "retroam", email = "retroam@yahoo.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "modal",
+    "fastapi>=0.104.0",
+    "pandas>=2.0.0",
+    "requests>=2.31.0",
+    "wordcloud>=1.8.0",
+    "gensim>=4.3.0",
+    "pyLDAvis>=3.4.0",
+    "scipy>=1.12.0",
+    "plotly>=5.0.0",
+    "python-dotenv>=1.0.0",
+    "pydantic==2.10.5",
+    "pydantic-core==2.27.2",
+    "nomic==3.4.1",
+    "openai>=1.0.0",
+    "sqlite-vec>=0.1.0",
+]
+
+[project.scripts]
+agileai = "agileai:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "isort"]
