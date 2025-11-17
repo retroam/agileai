@@ -50,6 +50,7 @@ export interface TopicModelingData {
       value: number;
     }[];
     label: string;
+    enhanced_label?: string;
   }[];
 }
 

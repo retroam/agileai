@@ -2,6 +2,9 @@ import sqlite3
 from modal import asgi_app
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import io
+import csv
 import os
 import pandas as pd
 from typing import Dict, List, Optional, Any
@@ -40,6 +43,7 @@ from .visualization import (
     prepare_repository_insights,
     prepare_nomic_atlas_topics
 )
+from .topic_enhancer import enhance_lda_topics
 
 # Custom JSON encoder to handle NumPy types
 class NumpyJSONEncoder(json.JSONEncoder):
@@ -78,6 +82,7 @@ def init_database():
 
 @app.function(
     volumes={VOLUME_DIR: volume},
+    timeout=600,  # 10 minutes timeout for large repositories
 )
 @asgi_app()
 def fastapi_entrypoint():
@@ -967,7 +972,16 @@ def save_topic_data(lda_vis, lda_model, dictionary, field, repo):
             "term_frequency": term_frequency_list,
             "topic_term_dists": topic_term_dists
         }
-        
+
+        # Enhance topics with meaningful labels and descriptions
+        try:
+            logging.info(f"Enhancing topics with AI-generated labels and descriptions for repository: '{repo}'")
+            vis_data = enhance_lda_topics(vis_data, repo_name=repo, field=field)
+            logging.info(f"Successfully enhanced {len(vis_data.get('topics', []))} topics")
+        except Exception as e:
+            logging.warning(f"Failed to enhance topics: {str(e)}. Using original topics.")
+            # Continue with unenhanced topics
+
         # Save this data to cache for later use
         visualization_type = f"topics_from_ldavis_{field}"
         logging.info(f"Saving {len(topic_data)} topics for repository: '{repo}'")
@@ -992,6 +1006,314 @@ def save_topic_data(lda_vis, lda_model, dictionary, field, repo):
         except Exception as inner_e:
             logging.error(f"Failed to save error data: {str(inner_e)}")
         return None
+
+@fastapi_app.get("/export/topics-csv")
+async def export_topics_csv(repo: str, field: str = Query("body"), github_token: Optional[str] = None):
+    """Export enhanced topics data as CSV"""
+    try:
+        logging.info(f"Exporting topics as CSV for repo: {repo}, field: {field}")
+
+        # Get the enhanced topic data
+        topics_response = await get_topics_from_ldavis(repo, field, force_refresh=False, github_token=github_token)
+
+        if not isinstance(topics_response, dict) or "topics" not in topics_response:
+            raise HTTPException(status_code=404, detail="No topics data available")
+
+        topics = topics_response.get("topics", [])
+
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow([
+            "Topic ID", "Label", "Description", "Health Status", "Weight",
+            "Top Words", "Action Items"
+        ])
+
+        # Write topic data
+        for topic in topics:
+            top_words = ", ".join([w["text"] for w in topic.get("words", [])[:10]])
+            action_items = " | ".join(topic.get("action_items", []))
+
+            writer.writerow([
+                topic.get("id"),
+                topic.get("enhanced_label", topic.get("label", "")),
+                topic.get("description", ""),
+                topic.get("health_indicator", "unknown"),
+                f"{topic.get('weight', 0):.3f}",
+                top_words,
+                action_items
+            ])
+
+        # Prepare response
+        output.seek(0)
+        filename = f"{repo.replace('/', '_')}_topics_{field}.csv"
+
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode()),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        logging.error(f"Error exporting topics to CSV: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@fastapi_app.get("/export/topics-json")
+async def export_topics_json(repo: str, field: str = Query("body"), github_token: Optional[str] = None):
+    """Export enhanced topics data as JSON"""
+    try:
+        logging.info(f"Exporting topics as JSON for repo: {repo}, field: {field}")
+
+        # Get the enhanced topic data
+        topics_response = await get_topics_from_ldavis(repo, field, force_refresh=False, github_token=github_token)
+
+        if not isinstance(topics_response, dict) or "topics" not in topics_response:
+            raise HTTPException(status_code=404, detail="No topics data available")
+
+        # Create export structure
+        export_data = {
+            "repository": repo,
+            "field_analyzed": field,
+            "export_date": datetime.now().isoformat(),
+            "enhanced": topics_response.get("enhanced", False),
+            "health_summary": topics_response.get("health_summary", {}),
+            "topics": []
+        }
+
+        # Add topic details
+        for topic in topics_response.get("topics", []):
+            export_data["topics"].append({
+                "id": topic.get("id"),
+                "label": topic.get("enhanced_label", topic.get("label", "")),
+                "original_label": topic.get("original_label", topic.get("label", "")),
+                "description": topic.get("description", ""),
+                "health_indicator": topic.get("health_indicator", "unknown"),
+                "weight": topic.get("weight", 0),
+                "action_items": topic.get("action_items", []),
+                "top_words": [
+                    {
+                        "word": w["text"],
+                        "probability": w.get("probability", 0),
+                        "frequency": w.get("value", 0)
+                    }
+                    for w in topic.get("words", [])[:15]
+                ]
+            })
+
+        # Create JSON response
+        json_str = json.dumps(export_data, indent=2, cls=NumpyJSONEncoder)
+        filename = f"{repo.replace('/', '_')}_topics_{field}.json"
+
+        return StreamingResponse(
+            io.BytesIO(json_str.encode()),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        logging.error(f"Error exporting topics to JSON: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@fastapi_app.get("/export/topic-report")
+async def export_topic_report(repo: str, field: str = Query("body"), github_token: Optional[str] = None):
+    """Export comprehensive topic analysis report as markdown"""
+    try:
+        logging.info(f"Exporting topic report for repo: {repo}, field: {field}")
+
+        # Get all necessary data
+        topics_response = await get_topics_from_ldavis(repo, field, force_refresh=False, github_token=github_token)
+        summary = await get_topic_summary(repo, field, github_token)
+
+        if not isinstance(topics_response, dict) or "topics" not in topics_response:
+            raise HTTPException(status_code=404, detail="No topics data available")
+
+        # Generate markdown report
+        report = []
+        report.append(f"# Topic Analysis Report\n")
+        report.append(f"**Repository:** {repo}\n")
+        report.append(f"**Analysis Field:** {field}\n")
+        report.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        report.append(f"**Enhanced with AI:** {'Yes' if topics_response.get('enhanced') else 'No'}\n\n")
+
+        # Executive Summary
+        report.append("## Executive Summary\n\n")
+        report.append(f"- **Total Topics Identified:** {summary['total_topics']}\n")
+
+        health_summary = summary.get('health_summary', {})
+        if health_summary:
+            report.append(f"- **Health Distribution:**\n")
+            for health_type, count in health_summary.items():
+                report.append(f"  - {health_type.capitalize()}: {count}\n")
+
+        if summary.get('critical_topics'):
+            report.append(f"- **Critical Issues:** {len(summary['critical_topics'])} topics requiring attention\n")
+
+        report.append("\n")
+
+        # Top Topics
+        if summary.get('top_topics'):
+            report.append("## Top Topics by Weight\n\n")
+            for i, topic in enumerate(summary['top_topics'], 1):
+                health_emoji = {
+                    "healthy": "✅",
+                    "attention": "⚠️",
+                    "critical": "🔴",
+                    "unknown": "❓"
+                }.get(topic['health'], "")
+                report.append(f"{i}. **{topic['label']}** {health_emoji}\n")
+                report.append(f"   - Weight: {topic['weight']:.3f}\n")
+                report.append(f"   - Health: {topic['health']}\n\n")
+
+        # Critical Topics
+        if summary.get('critical_topics'):
+            report.append("## Critical and Attention Topics\n\n")
+            for topic in summary['critical_topics']:
+                report.append(f"### {topic['label']} ({topic['health'].upper()})\n\n")
+                if topic.get('actions'):
+                    report.append("**Recommended Actions:**\n")
+                    for action in topic['actions']:
+                        report.append(f"- {action}\n")
+                    report.append("\n")
+
+        # Detailed Topic Analysis
+        report.append("## Detailed Topic Analysis\n\n")
+        topics = topics_response.get("topics", [])
+        for topic in sorted(topics, key=lambda t: t.get("weight", 0), reverse=True):
+            health_emoji = {
+                "healthy": "✅",
+                "attention": "⚠️",
+                "critical": "🔴",
+                "unknown": "❓"
+            }.get(topic.get('health_indicator', 'unknown'), "")
+
+            report.append(f"### Topic {topic['id']}: {topic.get('enhanced_label', topic.get('label', ''))} {health_emoji}\n\n")
+
+            if topic.get('description'):
+                report.append(f"**Description:** {topic['description']}\n\n")
+
+            report.append(f"**Weight:** {topic.get('weight', 0):.3f}\n\n")
+            report.append(f"**Health Status:** {topic.get('health_indicator', 'unknown')}\n\n")
+
+            # Top words
+            words = topic.get("words", [])[:10]
+            if words:
+                report.append("**Top Words:**\n")
+                for word in words:
+                    report.append(f"- {word['text']} (prob: {word.get('probability', 0):.3f})\n")
+                report.append("\n")
+
+            # Action items
+            actions = topic.get("action_items", [])
+            if actions:
+                report.append("**Recommended Actions:**\n")
+                for action in actions:
+                    report.append(f"- {action}\n")
+                report.append("\n")
+
+        # Action Summary
+        if summary.get('action_items'):
+            report.append("## Action Items Summary\n\n")
+            for item in summary['action_items']:
+                report.append(f"- **{item['topic_label']}:** {item['action']}\n")
+
+        # Footer
+        report.append("\n---\n")
+        report.append("*Report generated using Topic Modeling Dashboard with AI Enhancement*\n")
+
+        # Create response
+        report_content = "".join(report)
+        filename = f"{repo.replace('/', '_')}_topic_report_{field}.md"
+
+        return StreamingResponse(
+            io.BytesIO(report_content.encode()),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        logging.error(f"Error exporting topic report: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@fastapi_app.get("/visualize/topic-summary")
+async def get_topic_summary(repo: str, field: str = Query("body"), github_token: Optional[str] = None):
+    """Get topic modeling summary metrics for dashboard cards"""
+    try:
+        logging.info(f"Getting topic summary for repo: {repo}, field: {field}")
+
+        # Get the enhanced topic data
+        topics_response = await get_topics_from_ldavis(repo, field, force_refresh=False, github_token=github_token)
+
+        if isinstance(topics_response, dict) and "topics" in topics_response:
+            topics = topics_response.get("topics", [])
+            health_summary = topics_response.get("health_summary", {})
+
+            # Calculate summary metrics
+            summary = {
+                "total_topics": len(topics),
+                "health_summary": health_summary,
+                "top_topics": [],
+                "critical_topics": [],
+                "action_items": []
+            }
+
+            # Sort topics by weight to get top topics
+            sorted_topics = sorted(topics, key=lambda t: t.get("weight", 0), reverse=True)
+
+            # Get top 3 topics
+            for topic in sorted_topics[:3]:
+                summary["top_topics"].append({
+                    "id": topic.get("id"),
+                    "label": topic.get("enhanced_label", topic.get("label", "")),
+                    "weight": topic.get("weight", 0),
+                    "health": topic.get("health_indicator", "unknown")
+                })
+
+            # Get critical/attention topics
+            for topic in topics:
+                if topic.get("health_indicator") in ["critical", "attention"]:
+                    summary["critical_topics"].append({
+                        "id": topic.get("id"),
+                        "label": topic.get("enhanced_label", topic.get("label", "")),
+                        "health": topic.get("health_indicator"),
+                        "actions": topic.get("action_items", [])
+                    })
+
+            # Aggregate all action items
+            for topic in topics:
+                actions = topic.get("action_items", [])
+                if actions:
+                    for action in actions[:1]:  # Take first action from each topic
+                        summary["action_items"].append({
+                            "topic_id": topic.get("id"),
+                            "topic_label": topic.get("enhanced_label", topic.get("label", "")),
+                            "action": action
+                        })
+
+            # Limit action items to top 5
+            summary["action_items"] = summary["action_items"][:5]
+
+            return summary
+        else:
+            return {
+                "total_topics": 0,
+                "health_summary": {},
+                "top_topics": [],
+                "critical_topics": [],
+                "action_items": []
+            }
+
+    except Exception as e:
+        logging.error(f"Error getting topic summary: {str(e)}")
+        return {
+            "total_topics": 0,
+            "health_summary": {},
+            "top_topics": [],
+            "critical_topics": [],
+            "action_items": [],
+            "error": str(e)
+        }
 
 @fastapi_app.get("/visualize/topics-from-ldavis")
 async def get_topics_from_ldavis(repo: str, field: str = Query("body"), force_refresh: bool = False, github_token: Optional[str] = None):

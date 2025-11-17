@@ -15,12 +15,18 @@ interface LDAVisData {
       termIndex?: number;
     }>;
     label?: string;
+    enhanced_label?: string;
+    description?: string;
     formatted_description?: string;
     weight?: number;
+    health_indicator?: string;
+    action_items?: string[];
   }>;
   terms: string[];
   term_frequency: number[];
   topic_term_dists: number[][];
+  enhanced?: boolean;
+  health_summary?: Record<string, number>;
 }
 
 interface ScatterPlotProps {
@@ -77,12 +83,29 @@ function ScatterPlot({ topics, onTopicSelect, selectedTopic }: ScatterPlotProps)
   const renderNode = (props: any) => {
     const { cx, cy, payload } = props;
     if (cx === undefined || cy === undefined || !payload) {
-      return null;
+      return <g />;
     }
 
+    const topic = topics.find(t => t.id === payload.id);
     const isSelected = payload.id === selectedTopic;
-    const fillColor = isSelected ? '#2563eb' : '#8884d8';
-    const strokeColor = isSelected ? '#1d4ed8' : '#6366f1';
+
+    // Color based on health indicator
+    let fillColor = '#8884d8'; // default
+    let strokeColor = '#6366f1';
+
+    if (topic?.health_indicator === 'healthy') {
+      fillColor = isSelected ? '#16a34a' : '#22c55e';
+      strokeColor = isSelected ? '#15803d' : '#16a34a';
+    } else if (topic?.health_indicator === 'attention') {
+      fillColor = isSelected ? '#ca8a04' : '#eab308';
+      strokeColor = isSelected ? '#a16207' : '#ca8a04';
+    } else if (topic?.health_indicator === 'critical') {
+      fillColor = isSelected ? '#dc2626' : '#ef4444';
+      strokeColor = isSelected ? '#b91c1c' : '#dc2626';
+    } else if (isSelected) {
+      fillColor = '#2563eb';
+      strokeColor = '#1d4ed8';
+    }
 
     return (
       <g>
@@ -95,9 +118,12 @@ function ScatterPlot({ topics, onTopicSelect, selectedTopic }: ScatterPlotProps)
           stroke={strokeColor}
           strokeWidth={isSelected ? 3 : 1}
         />
-        {isSelected && (
-          <text x={cx} y={cy + 4} textAnchor="middle" fontSize={12} fill="#1f2937">
-            Topic {payload.id + 1}
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize={isSelected ? 12 : 10} fill="#1f2937" fontWeight={isSelected ? "bold" : "normal"}>
+          {`${payload.id + 1}`}
+        </text>
+        {topic?.enhanced_label && (
+          <text x={cx} y={cy + 18} textAnchor="middle" fontSize={9} fill="#6b7280">
+            {topic.enhanced_label.length > 15 ? topic.enhanced_label.substring(0, 15) + '...' : topic.enhanced_label}
           </text>
         )}
       </g>
@@ -115,18 +141,36 @@ function ScatterPlot({ topics, onTopicSelect, selectedTopic }: ScatterPlotProps)
           if (!entry) return null;
 
           const topic = filteredTopics.find((t) => t.id === entry.id);
+          const healthEmoji = {
+            'healthy': '✅',
+            'attention': '⚠️',
+            'critical': '🔴'
+          }[topic?.health_indicator || ''] || '';
+
           return (
-            <div className="bg-white p-2 border rounded shadow max-w-xs">
-              <p className="font-medium">Topic {entry.id + 1}</p>
+            <div className="bg-white p-3 border rounded shadow max-w-sm">
+              <p className="font-medium flex items-center gap-2">
+                Topic {entry.id + 1}: {topic?.enhanced_label || topic?.label || 'Loading...'} {healthEmoji}
+              </p>
+              {topic?.description && (
+                <p className="text-xs text-muted-foreground mt-1 mb-2">
+                  {topic.description}
+                </p>
+              )}
               {topic?.words?.length ? (
                 <p className="text-sm text-muted-foreground">
-                  {topic.words
+                  Top words: {topic.words
                     .slice(0, 5)
                     .map((w) => w.text)
                     .join(', ')}
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">Topic weight: {entry.weight.toFixed(3)}</p>
+              )}
+              {topic?.health_indicator && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Health: {topic.health_indicator}
+                </p>
               )}
             </div>
           );
@@ -192,14 +236,49 @@ function TopicDetails({ selectedTopic, lambda, setLambda, data }: TopicDetailsPr
     return relevanceRows.slice(0, 5).map((row) => row.word).join(', ');
   }, [relevanceRows, topic]);
 
+  const healthEmoji = {
+    'healthy': '✅',
+    'attention': '⚠️',
+    'critical': '🔴'
+  }[topic?.health_indicator || ''] || '';
+
+  const healthColor = {
+    'healthy': 'text-green-600',
+    'attention': 'text-yellow-600',
+    'critical': 'text-red-600'
+  }[topic?.health_indicator || ''] || '';
+
   return (
     <div className="bg-white p-6 rounded-lg border">
       <div className="mb-4">
-        <h3 className="text-lg font-medium mb-2">
-          Topic {selectedTopic + 1}
+        <h3 className="text-lg font-medium mb-2 flex items-center gap-2">
+          Topic {selectedTopic + 1}: {topic?.enhanced_label || topic?.label || 'Loading...'} {healthEmoji}
         </h3>
+        {topic?.description && (
+          <p className="text-sm text-muted-foreground mb-2">{topic.description}</p>
+        )}
+        {topic?.health_indicator && (
+          <p className={`text-sm font-medium mb-2 ${healthColor}`}>
+            Health Status: {topic.health_indicator}
+          </p>
+        )}
+        {topic?.action_items && topic.action_items.length > 0 && (
+          <div className="mb-3">
+            <p className="text-sm font-medium mb-1">Recommended Actions:</p>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              {topic.action_items.map((action, idx) => (
+                <li key={idx} className="flex items-start gap-1">
+                  <span>•</span>
+                  <span>{action}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {summaryLine && (
-          <p className="text-sm text-muted-foreground mb-4">{summaryLine}</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Keywords: {summaryLine}
+          </p>
         )}
         <div className="mb-4">
           <label className="block mb-2">

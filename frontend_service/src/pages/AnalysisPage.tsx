@@ -1062,12 +1062,12 @@ export function AnalysisPage() {
               <Card className="p-6">
                 <h2 className="text-2xl font-semibold mb-4">Text Analysis</h2>
                 <div className="mb-6">
-                  <RadioGroup 
-                    defaultValue="title" 
+                  <RadioGroup
+                    value={currentAnalysisField}
                     className="flex space-x-4"
                     onValueChange={(value) => {
                       if (value === 'title' || value === 'body') {
-                        loadTextAnalysisData(value);
+                        setCurrentAnalysisField(value);
                       }
                     }}
                   >
@@ -1216,11 +1216,13 @@ export function AnalysisPage() {
                     <div className="border rounded-lg p-4 bg-muted/40">
                       <h3 className="text-lg font-medium mb-2">Topic Labels</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {memoizedTopicLabels.map((topic) => (
+                        {topicData.topics.slice(0, 5).map((topic) => (
                           <div key={topic.id} className="bg-background p-3 rounded-md border">
-                            <h4 className="font-medium">Topic {topic.id + 1}</h4>
+                            <h4 className="font-medium">
+                              {topic.enhanced_label ? `Topic ${topic.id + 1}: ${topic.enhanced_label}` : `Topic ${topic.id + 1}`}
+                            </h4>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {topic.words.map(w => w.text).join(", ")}
+                              {topic.words.slice(0, 5).map(w => w.text).join(", ")}
                             </p>
                           </div>
                         ))}
