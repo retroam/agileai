@@ -21,7 +21,7 @@ export function PyLDAVisViewer({ repoName, field, apiUrl }: PyLDAVisViewerProps)
     const loadLdaData = async () => {
       try {
         console.log('Fetching LDA data...');
-        const response = await fetch(`${baseApiUrl}/visualize/topics-from-ldavis?repo=${encodedRepo}&field=${field}${loadAttempts > 1 ? '&force_refresh=true' : ''}`);
+        const response = await fetch(`${baseApiUrl}/visualize/topics-from-ldavis?repo=${encodedRepo}&field=${field}${loadAttempts > 0 ? '&force_refresh=true' : ''}`);
         if (response.ok) {
           const data = await response.json();
           console.log('Received LDA data:', data);

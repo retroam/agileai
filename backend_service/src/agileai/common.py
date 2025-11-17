@@ -45,6 +45,12 @@ if os.environ.get("NOMIC_API_KEY"):
     secrets.append(nomic_secret)
     print("Added Nomic API key from environment to Modal secrets")
 
+# Add Anthropic API key if it exists in the environment
+if os.environ.get("ANTHROPIC_API_KEY"):
+    anthropic_secret = Secret.from_dict({"ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"]})
+    secrets.append(anthropic_secret)
+    print("Added Anthropic API key from environment to Modal secrets")
+
 app = App(name="starter_template", secrets=secrets, image=image)
 
 # Create a FastAPI instance here so it can be shared across modules

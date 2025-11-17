@@ -131,7 +131,7 @@ def save_repository_info(repo_name: str, repo_info: Dict[str, Any]):
     
     logger.info(f"Repository info saved for {repo_name}")
 
-def get_repository_info(repo_name: str, max_age_hours: int = 24) -> Optional[Dict[str, Any]]:
+def get_repository_info(repo_name: str, max_age_hours: int = 24 * 7) -> Optional[Dict[str, Any]]:
     """Get repository info from the database cache if it exists and is not too old"""
     logger.info(f"Getting repository info for {repo_name} from cache")
     
@@ -192,7 +192,7 @@ def save_repository_issues(repo_name: str, issues_data: List[Dict[str, Any]]):
     
     logger.info(f"Repository issues saved for {repo_name}")
 
-def get_repository_issues(repo_name: str, max_age_hours: int = 24) -> Optional[List[Dict[str, Any]]]:
+def get_repository_issues(repo_name: str, max_age_hours: int = 24 * 7) -> Optional[List[Dict[str, Any]]]:
     """Get repository issues from the database cache if they exist and are not too old"""
     logger.info(f"Getting repository issues for {repo_name} from cache")
     
@@ -273,7 +273,7 @@ def save_visualization_data(repo_name: str, visualization_type: str, data: Dict[
     
     logger.info(f"{visualization_type} visualization saved for {repo_name}")
 
-def get_visualization_data(repo_name: str, visualization_type: str, max_age_hours: int = 24) -> Optional[Dict[str, Any]]:
+def get_visualization_data(repo_name: str, visualization_type: str, max_age_hours: int = 24 * 7) -> Optional[Dict[str, Any]]:
     """Get visualization data from the cache if it exists and is not too old"""
     logger.info(f"Getting {visualization_type} visualization for {repo_name} from cache")
     
@@ -307,11 +307,18 @@ def get_visualization_data(repo_name: str, visualization_type: str, max_age_hour
         logger.error(f"Error decoding JSON visualization data for {repo_name}")
         return None
 
-def save_issues_with_embeddings(repo_name: str, issues_data: List[Dict[str, Any]]):
-    """Save individual issues to the database and generate embeddings"""
+def save_issues_with_embeddings(repo_name: str, issues_data: List[Dict[str, Any]], batch_size: int = 100, max_issues: int = 5000):
+    """Save individual issues to the database and generate embeddings
+
+    Args:
+        repo_name: Repository name
+        issues_data: List of issue dictionaries
+        batch_size: Number of issues to process in each batch for embedding
+        max_issues: Maximum number of issues to process (to prevent timeouts)
+    """
     from openai import OpenAI
     import os
-    
+
     # Handle case where issues_data might be a string (from corrupted cache)
     if isinstance(issues_data, str):
         try:
@@ -319,7 +326,7 @@ def save_issues_with_embeddings(repo_name: str, issues_data: List[Dict[str, Any]
         except (json.JSONDecodeError, TypeError):
             logger.error(f"Invalid issues_data format for {repo_name}: expected list, got {type(issues_data)}")
             return
-    
+
     if not isinstance(issues_data, list):
         logger.error(f"Invalid issues_data format for {repo_name}: expected list, got {type(issues_data)}")
         return
@@ -339,13 +346,41 @@ def save_issues_with_embeddings(repo_name: str, issues_data: List[Dict[str, Any]
         normalized.append(item)
     issues_data = normalized
 
-    logger.info(f"Saving {len(issues_data)} issues with embeddings for {repo_name}")
+    # Limit the number of issues to process to prevent timeouts
+    total_issues = len(issues_data)
+    if total_issues > max_issues:
+        logger.warning(f"Repository {repo_name} has {total_issues} issues. Only processing first {max_issues} to prevent timeout.")
+        issues_data = issues_data[:max_issues]
+
+    logger.info(f"Saving {len(issues_data)} issues with embeddings for {repo_name} (total: {total_issues})")
     
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        
+
+        # First, check which issues already exist and have embeddings
+        existing_issues = set()
+        existing_embeddings = set()
+
+        cursor.execute("SELECT issue_number FROM issues WHERE repo_name = ?", (repo_name,))
+        existing_issues = {row[0] for row in cursor.fetchall()}
+
+        cursor.execute("""
+            SELECT i.issue_number
+            FROM issues i
+            JOIN vec_issues v ON i.id = v.id
+            WHERE i.repo_name = ?
+        """, (repo_name,))
+        existing_embeddings = {row[0] for row in cursor.fetchall()}
+
+        logger.info(f"Found {len(existing_issues)} existing issues and {len(existing_embeddings)} existing embeddings for {repo_name}")
+
+        # Process issues
+        new_issues_count = 0
+        new_embeddings_count = 0
+        skipped_count = 0
+
         for issue in issues_data:
             issue_id = issue.get('id') or issue.get('issue_id')
             issue_number = issue.get('number') or issue.get('issue_number')
@@ -374,39 +409,44 @@ def save_issues_with_embeddings(repo_name: str, issues_data: List[Dict[str, Any]
                     repo_name,
                     list(issue.keys())
                 )
+                skipped_count += 1
                 continue
-            
-            # Check if issue already exists
-            cursor.execute("SELECT id FROM issues WHERE repo_name = ? AND issue_number = ?", 
-                         (repo_name, issue_number))
-            
-            if cursor.fetchone() is None:
+
+            # Skip if issue already has embedding
+            if issue_number in existing_embeddings:
+                skipped_count += 1
+                continue
+
+            # Check if issue already exists in database
+            if issue_number not in existing_issues:
                 # Insert issue
                 cursor.execute('''
                 INSERT INTO issues (id, repo_name, issue_number, title, body, state, author, created_at, updated_at, labels)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (issue_id, repo_name, issue_number, title, body, state, author, created_at, updated_at, labels))
-                
-                # Generate embedding for combined title and body
-                content = f"{title}\n\n{body}" if body else title
-                if content and content.strip():
-                    try:
-                        embedding = client.embeddings.create(
-                            model="text-embedding-ada-002", 
-                            input=content
-                        ).data[0].embedding
-                        
-                        cursor.execute('''
-                        INSERT INTO vec_issues (id, embedding)
-                        VALUES (?, ?)
-                        ''', (issue_id, serialize(embedding)))
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to create embedding for issue {issue_number}: {e}")
-        
+                new_issues_count += 1
+
+            # Generate embedding only if needed
+            content = f"{title}\n\n{body}" if body else title
+            if content and content.strip():
+                try:
+                    embedding = client.embeddings.create(
+                        model="text-embedding-ada-002",
+                        input=content
+                    ).data[0].embedding
+
+                    cursor.execute('''
+                    INSERT INTO vec_issues (id, embedding)
+                    VALUES (?, ?)
+                    ''', (issue_id, serialize(embedding)))
+                    new_embeddings_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to create embedding for issue {issue_number}: {e}")
+
         conn.commit()
-    
-    logger.info(f"Issues with embeddings saved for {repo_name}")
+
+    logger.info(f"Processed {repo_name}: {new_issues_count} new issues, {new_embeddings_count} new embeddings, {skipped_count} skipped")
 
 def similarity_search_issues(repo_name: str, query: str, top_k: int = 15):
     """Search for similar issues using vector similarity"""
